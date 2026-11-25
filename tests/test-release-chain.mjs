@@ -20,6 +20,14 @@ import { fileURLToPath } from 'node:url'
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const read = (relative) => readFileSync(join(root, relative), 'utf8')
 
+// fork 构建没有上游那条发版链：release-please / 自动合并 / npm 发布 / npm 复查都被移除。
+// 这条契约只对上游仓库成立，fork 里跳过（而不是伪造一套假的流水线）。
+const pkg = JSON.parse(read('package.json'))
+if (pkg.dshFork === true) {
+  console.log('SKIP  发布链契约：fork 构建不发布 npm，上游发版流水线已移除')
+  process.exit(0)
+}
+
 const releasePlease = read('.github/workflows/release-please.yml')
 const autoMerge = read('.github/workflows/auto-merge-own.yml')
 const ci = read('.github/workflows/ci.yml')

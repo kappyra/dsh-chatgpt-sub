@@ -228,6 +228,12 @@ for (const lang of ['zh', 'en']) {
   assert.ok(connected.includes(LOCALES[lang]['ui.status']), lang + ': the status row must be translated')
   assert.ok(connected.includes(LOCALES[lang]['ui.unbind']), lang + ': the unbind control must be translated')
   assert.ok(connected.includes('plus'), lang + ': the plan suffix must wrap the plan name')
+  const withEffort = app.render({
+    bound: true,
+    effort: { preference: 'high', levels: ['low', 'medium', 'high', 'xhigh'], applied: 'high' },
+  })
+  assert.ok(withEffort.includes(LOCALES[lang]['ui.effortCardTitle']), lang + ': the effort card must render its title')
+  assert.ok(withEffort.includes(LOCALES[lang]['ui.effortDefault']), lang + ': the effort card must render its row')
   const failed = app.render({ bound: true, error: { kind: 'auth', code: 'token.expiring', message: 'HOST FALLBACK' } })
   assert.ok(failed.includes(LOCALES[lang]['error.token.expiring']), lang + ': a coded host error must be translated')
   assert.ok(!failed.includes('HOST FALLBACK'), lang + ': the translated copy replaces the host fallback')

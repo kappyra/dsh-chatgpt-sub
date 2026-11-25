@@ -229,6 +229,53 @@ try {
   assert.equal(routeConfig.apiKeyEnv, 'CHATGPT_SIWC_TOKEN')
   assert.ok(routeConfig.baseURL.startsWith('http://127.0.0.1:'))
   assert.deepEqual(routeConfig.models.map(function (m) { return m.id }), ['gpt-6.1-sol', 'gpt-5.6-sol'])
+  // 推理档位：每个模型都要带上 reasoningEfforts，DSH 的模型菜单才会出现档位选择；
+  // 家族表决定提供哪些档位（官方模型页写明的那些）。
+  const modelsById = Object.fromEntries(routeConfig.models.map(function (m) { return [m.id, m] }))
+  assert.deepEqual(modelsById['gpt-6.1-sol'].reasoningEfforts, {
+    off: null, low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max',
+  })
+  assert.deepEqual(modelsById['gpt-5.6-sol'].reasoningEfforts, {
+    off: null, none: 'none', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max',
+  })
+  assert.deepEqual(status.effort.levels, ['low', 'medium', 'high', 'xhigh', 'max'])
+  assert.equal(status.effort.preference, 'auto')
+  assert.equal(status.effort.applied, 'auto')
+
+  // 默认档位写进路由的 reasoning；两台模型都支持的 high 可以落地。
+  const appliedEffort = await (await originalFetch(base + 'setDefaultEffort', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"effort":"high"}',
+  })).json()
+  assert.equal(appliedEffort.ok, true)
+  assert.equal(appliedEffort.effort.preference, 'high')
+  assert.equal(sections['llm-pi-ai'].providers['chatgpt-siwc'].reasoning, 'high')
+
+  // gpt-6.1-sol 不支持的 none 不能写进路由（否则 pi-ai 请求时会抛 UNSUPPORTED_REASONING_EFFORT）。
+  const rejectedEffort = await (await originalFetch(base + 'setDefaultEffort', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"effort":"none"}',
+  })).json()
+  assert.equal(rejectedEffort.ok, true)
+  assert.equal(rejectedEffort.effort.applied, null)
+  assert.equal(sections['llm-pi-ai'].providers['chatgpt-siwc'].reasoning, undefined)
+
+  const restoredEffort = await (await originalFetch(base + 'setDefaultEffort', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"effort":"auto"}',
+  })).json()
+  assert.equal(restoredEffort.ok, true)
+  assert.equal(restoredEffort.effort.preference, 'auto')
+  assert.equal(sections['llm-pi-ai'].providers['chatgpt-siwc'].reasoning, undefined)
+
+  // 「模型」设置页手工调过的档位要保留：下次同步不能拿能力表把它覆盖回去。
+  const editedRoute = sections['llm-pi-ai'].providers['chatgpt-siwc']
+  editedRoute.models[0].reasoningEfforts = { off: null, low: 'low', medium: 'medium' }
+  await originalFetch(base + 'setDefaultEffort', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"effort":"auto"}',
+  })
+  assert.deepEqual(
+    sections['llm-pi-ai'].providers['chatgpt-siwc'].models[0].reasoningEfforts,
+    { off: null, low: 'low', medium: 'medium' },
+    'manual reasoning levels survive the next sync',
+  )
   assert.ok(records.get('chatgpt-sub/session'), 'session record written')
   assert.equal(tokenCalls, 1)
   assert.ok(nonceSeen)

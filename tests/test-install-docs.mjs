@@ -53,7 +53,10 @@ assert.notEqual(rowId, rowName, 'the bundle row id must differ from the package 
 
 // ---------- 3. 用户文档三条路径齐全 ----------
 // 用正则匹配完整地址，而不是对 URL 做 substring 断言（CodeQL js/incomplete-url-substring-sanitization）
-const REPO_ADDRESS = /https:\/\/github\.com\/SONGOAO25\/dsh-chatgpt-sub(?![\w.-])/
+// fork 构建必须把用户导向本仓库：同名 npm 包是上游代码，装进去没有本 fork 的功能。
+const REPO_ADDRESS = pkg.dshFork === true
+  ? /https:\/\/github\.com\/kappyra\/dsh-chatgpt-sub(?![\w.-])/
+  : /https:\/\/github\.com\/SONGOAO25\/dsh-chatgpt-sub(?![\w.-])/
 const docs = {
   'README.md': read('README.md'),
   'README.zh-CN.md': read('README.zh-CN.md'),
@@ -93,22 +96,34 @@ assert.notEqual(desktopRun.status, 0, 'install.sh --profile desktop must fail in
 assert.ok(/desktop/.test(desktopRun.stdout + desktopRun.stderr), 'install.sh must name the refused profile')
 assert.ok(/添加插件/.test(desktopRun.stdout + desktopRun.stderr), 'install.sh must send desktop users to the plugin page')
 
-// ---------- 5. 发布 npm：包名与仓库地址是并列的两个安装入口 ----------
-assert.ok(existsSync(join(root, '.github/workflows/publish-npm.yml')),
-  'the package is published to npm — keep .github/workflows/publish-npm.yml present')
-assert.equal(pkg.name, 'dsh-chatgpt-sub', 'the published npm package name is fixed: dsh-chatgpt-sub')
-const PKG_NAME_INSTALL = /add dsh-chatgpt-sub(\s|$)/m
-for (const [name, text] of Object.entries(docs)) {
-  assert.ok(PKG_NAME_INSTALL.test(text),
-    name + ' must present the bare package-name install command (the package is on npm)')
-  assert.ok(!/dsh-chatgpt-sub@latest/.test(text),
-    name + ' must not hand users an npm @latest install command (DSH takes a plain package name)')
-  // 发布工作流存在不等于包已上架；文档须提供当前仓库地址和发布后的包名入口。
-  assert.ok(!/Yes — the package name|有，包名/.test(text),
-    name + ' must not assert npm availability without a verified publication')
+// ---------- 5. 安装入口：fork 与上游的区别必须写清楚 ----------
+assert.equal(pkg.name, 'dsh-chatgpt-sub', 'the package name stays identical to upstream (the client bundle id depends on it)')
+if (pkg.dshFork === true) {
+  // fork：不发布 npm，安装入口只能是本仓库地址，文档必须明确劝退按包名安装。
+  assert.equal(existsSync(join(root, '.github/workflows/publish-npm.yml')), false,
+    'a fork build must not carry upstream\'s npm publish pipeline')
+  for (const [name, text] of Object.entries(docs)) {
+    assert.ok(/kappyra\/dsh-chatgpt-sub/.test(text), name + ' must give the fork repository address')
+    assert.ok(!/add dsh-chatgpt-sub(\s|$)/m.test(text),
+      name + ' must not hand users the bare package-name install command: it resolves to upstream code')
+    assert.ok(/npm/.test(text), name + ' must explain that the npm package is upstream, not this fork')
+  }
+  assert.ok(existsSync(join(root, 'docs/FORK.md')), 'the fork must document what changed in docs/FORK.md')
+} else {
+  assert.ok(existsSync(join(root, '.github/workflows/publish-npm.yml')),
+    'the package is published to npm — keep .github/workflows/publish-npm.yml present')
+  const PKG_NAME_INSTALL = /add dsh-chatgpt-sub(\s|$)/m
+  for (const [name, text] of Object.entries(docs)) {
+    assert.ok(PKG_NAME_INSTALL.test(text),
+      name + ' must present the bare package-name install command (the package is on npm)')
+    assert.ok(!/dsh-chatgpt-sub@latest/.test(text),
+      name + ' must not hand users an npm @latest install command (DSH takes a plain package name)')
+    assert.ok(!/Yes — the package name|有，包名/.test(text),
+      name + ' must not assert npm availability without a verified publication')
+  }
+  assert.ok(/dsh-chatgpt-sub/.test(docs['docs/INSTALL.md']),
+    'docs/INSTALL.md must name the npm package for the plugin-page install box')
 }
-assert.ok(/dsh-chatgpt-sub/.test(docs['docs/INSTALL.md']),
-  'docs/INSTALL.md must name the npm package for the plugin-page install box')
 
 // locale 字典是插件页显示的元信息来源，安装契约测试顺手钉住它没被删
 assert.deepEqual(readdirSync(join(root, 'locale')).sort(), Object.keys((await import('../src/locales.js')).LOCALES).map(language => language + '.json').sort(), 'locale/ must expose every built-in plugin language')

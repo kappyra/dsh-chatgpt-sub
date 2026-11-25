@@ -498,7 +498,7 @@ module.exports = {
         var stateDescNodes = [];
         if (!state.disabled) stateDescNodes.push(h('div', { className: 'cgpt-rowDesc', key: 'intro' }, t('ui.versionAndUpdateDesc')));
         stateDescNodes.push(h('div', { className: 'cgpt-rowDesc', key: 'facts' }, facts.join(' · ')));
-        if (state.disabled) stateDescNodes.push(h('div', { className: 'cgpt-rowDesc', key: 'why' }, t('ui.updateDisabledWhy')));
+        if (state.disabled) stateDescNodes.push(h('div', { className: 'cgpt-rowDesc', key: 'why' }, t(state.forkBuild ? 'ui.updateDisabledForkWhy' : 'ui.updateDisabledWhy')));
         if (!state.disabled && state.lastError) {
           var failureKeys = { 'incomplete-download': 'ui.updateErrorIncompleteDownload', 'integrity-mismatch': 'ui.updateErrorIntegrityMismatch', 'download-failed': 'ui.updateErrorDownloadFailed', 'too-large': 'ui.updateErrorTooLarge', 'payload-mismatch': 'ui.updateErrorPayloadMismatch', 'payload-unsafe': 'ui.updateErrorPayloadUnsafe', 'check-failed': 'ui.updateErrorCheckFailed' };
           stateDescNodes.push(h('div', { className: 'cgpt-alert cgpt-alert--error', role: 'alert', key: 'failure' }, h('span', { className: 'cgpt-alertText' }, t(failureKeys[state.lastErrorKind] || 'ui.updateErrorUnknown'))));
@@ -732,6 +732,46 @@ module.exports = {
         ]),
       ]);
 
+      // 卡 3「推理档位」：默认档位写进路由的 reasoning 字段，新会话按它起步；
+      // 单个会话的临时档位在模型菜单里选，两者互不覆盖。
+      var effortInfo = status && status.effort ? status.effort : null;
+      var effortLevels = effortInfo && Array.isArray(effortInfo.levels) ? effortInfo.levels : [];
+      var effortNotApplied = !!(effortInfo && effortInfo.preference !== 'auto' && effortInfo.applied === null);
+      var effortChoices = [{ value: 'auto', label: t('ui.effortAuto') }].concat(effortLevels.map(function (level) {
+        return { value: level, label: t('effort.' + level) };
+      }));
+      var handleEffortChange = function (value) {
+        rpc('setDefaultEffort', { effort: value }).then(function (res) {
+          if (res && res.ok) setStatus(res);
+          else notify(t('ui.effortSaveFailed'));
+        }).catch(function () { notify(t('ui.effortSaveFailed')); });
+      };
+      var effortCard = effortLevels.length > 0 ? hList('section', { className: 'cgpt-card', 'aria-labelledby': 'cgpt-effort-title', key: 'effort-card' }, [
+        hList('div', { className: 'cgpt-cardHead' }, [
+          h('span', { id: 'cgpt-effort-title', className: 'cgpt-cardTitle', role: 'heading', 'aria-level': 2 }, t('ui.effortCardTitle')),
+          h('div', { className: 'cgpt-cardDesc' }, t('ui.effortCardDesc')),
+        ]),
+        hList('div', { className: 'cgpt-body' }, [
+          hList('div', { className: 'cgpt-rows' }, [
+            hList('div', { className: 'cgpt-row' }, [
+              hList('div', { className: 'cgpt-rowText' }, [
+                h('div', { className: 'cgpt-rowTitle' }, t('ui.effortDefault')),
+                effortNotApplied
+                  ? h('div', { className: 'cgpt-alert cgpt-alert--error', role: 'alert' }, t('ui.effortNotApplied'))
+                  : h('div', { className: 'cgpt-rowDesc' }, t('ui.effortDefaultHint')),
+              ]),
+              h('div', { className: 'cgpt-controls' }, cgptSelect({
+                id: 'cgpt-effort',
+                value: effortInfo.preference,
+                label: t('ui.effortDefault'),
+                options: effortChoices,
+                onChange: handleEffortChange,
+              })),
+            ]),
+          ]),
+        ]),
+      ]) : null;
+
       // 三态：未绑定（中性引导）/ 已连接（绿）/ 需要注意（红，绑定还在但状态异常）。
       // 未绑定绝不显示红字——那不是错误，是正常起点。
       var bound = !!(status && status.bound);
@@ -833,6 +873,7 @@ module.exports = {
       return hList('div', { className: 'cgpt-page' }, [
         bindingCard,
         languageCard,
+        effortCard,
         h(SubscriptionUpdates),
         unbindDialog,
         toastNode,

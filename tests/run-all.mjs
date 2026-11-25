@@ -19,6 +19,8 @@ const files = [
   'test-release-chain.mjs',
   'test-source-guards.mjs',
   'test-siwc-host.mjs',
+  'test-reasoning-effort.mjs',
+  'test-fork-safety.mjs',
   'test-codex-quota.mjs',
   'test-siwc-flow.mjs',
   'test-network-diagnostics.mjs',

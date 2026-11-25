@@ -19,6 +19,7 @@
   "homepage": "https://github.com/songoao25/dsh-chatgpt-sub",
   "author": "SONGOAO25",
   "license": "MIT",
+  "dshFork": true,
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -38,7 +39,8 @@
     "docs/DETAIL.md",
     "docs/DETAIL.zh.md",
     "docs/DETAIL.zh-Hant.md",
-    "LICENSE"
+    "LICENSE",
+    "docs/FORK.md"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
