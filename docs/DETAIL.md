@@ -3,4 +3,4 @@
 - Keeps the sign-in alive, shows the account and its expiry, and can rebind or unbind at any time
 - Needs an eligible ChatGPT Plus or Pro account; the model list comes from the signed-in account, so it reflects that plan
 
-Updates and troubleshooting: [install guide](https://github.com/SONGOAO25/dsh-chatgpt-sub/blob/main/docs/INSTALL.md).
+Updates and troubleshooting: [install guide](https://github.com/kappyra/dsh-chatgpt-sub/blob/main/docs/INSTALL.md).

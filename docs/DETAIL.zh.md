@@ -3,4 +3,4 @@
 - 自动维护登录状态，显示账号与有效期，可随时重新绑定或解绑
 - 需要 ChatGPT Plus 或 Pro；模型列表来自登录账号，因此就是该套餐实际可用的模型
 
-更新与排障见 [安装文档](https://github.com/SONGOAO25/dsh-chatgpt-sub/blob/main/docs/INSTALL.md)。
+更新与排障见 [安装文档](https://github.com/kappyra/dsh-chatgpt-sub/blob/main/docs/INSTALL.md)。

@@ -6,7 +6,7 @@
 # 请在客户端内「插件 → 添加插件」填入仓库地址安装。
 set -euo pipefail
 
-REPO_URL="https://github.com/SONGOAO25/dsh-chatgpt-sub"
+REPO_URL="https://github.com/kappyra/dsh-chatgpt-sub"
 PROFILE="web"
 while [[ $# -gt 0 ]]; do
   case "$1" in

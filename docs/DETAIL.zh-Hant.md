@@ -3,4 +3,4 @@
 - 自動維護登入狀態，顯示帳號與有效期限，可隨時重新綁定或解綁
 - 需要 ChatGPT Plus 或 Pro；模型清單來自登入帳號，因此就是該方案實際可用的模型
 
-更新與疑難排解見 [安裝文件](https://github.com/SONGOAO25/dsh-chatgpt-sub/blob/main/docs/INSTALL.md)。
+更新與疑難排解見 [安裝文件](https://github.com/kappyra/dsh-chatgpt-sub/blob/main/docs/INSTALL.md)。
