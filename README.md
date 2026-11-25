@@ -2,17 +2,15 @@
 
 **English** | [**中文**](README.zh-CN.md)
 
-[![License: MIT](https://img.shields.io/github/license/SONGOAO25/dsh-chatgpt-sub)](https://github.com/SONGOAO25/dsh-chatgpt-sub/blob/main/LICENSE)
-[![Release](https://img.shields.io/github/v/release/SONGOAO25/dsh-chatgpt-sub)](https://github.com/SONGOAO25/dsh-chatgpt-sub/releases)
-[![npm version](https://img.shields.io/npm/v/dsh-chatgpt-sub)](https://www.npmjs.com/package/dsh-chatgpt-sub)
-[![npm downloads](https://badgen.net/npm/dt/dsh-chatgpt-sub?label=downloads)](https://www.npmjs.com/package/dsh-chatgpt-sub)
-[![npm monthly downloads](https://badgen.net/npm/dm/dsh-chatgpt-sub?label=downloads%2Fmonth)](https://www.npmjs.com/package/dsh-chatgpt-sub)
-[![GitHub stars](https://img.shields.io/github/stars/songoao25/dsh-chatgpt-sub)](https://github.com/songoao25/dsh-chatgpt-sub/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/songoao25/dsh-chatgpt-sub)](https://github.com/songoao25/dsh-chatgpt-sub/forks)
+[![License: MIT](https://img.shields.io/github/license/kappyra/dsh-chatgpt-sub)](https://github.com/kappyra/dsh-chatgpt-sub/blob/main/LICENSE)
+[![Upstream](https://img.shields.io/badge/upstream-SONGOAO25%2Fdsh--chatgpt--sub-blue)](https://github.com/SONGOAO25/dsh-chatgpt-sub)
+[![GitHub stars](https://img.shields.io/github/stars/kappyra/dsh-chatgpt-sub)](https://github.com/kappyra/dsh-chatgpt-sub/stargazers)
 
 A DeepSeek Harness plugin that connects your ChatGPT account through OpenAI's official **Sign in with ChatGPT** flow (ChatGPT plan usage for open-source clients) and lets you use the models available to that account inside DSH.
 
 You need an eligible **ChatGPT Plus or Pro** account and must allow this app to use your plan during sign-in. Free, Team, Enterprise and Edu plans are not part of OpenAI's current preview. If you distribute this plugin in a paid or remotely hosted product, apply through OpenAI's [interest form](https://openai.com/form/sign-in-with-chatgpt-interest/); open-source and locally hosted use follows the automatic path described in [OpenAI's SIWC documentation](https://developers.openai.com/siwc/token-sharing-open-source).
+
+> **This is a fork.** It adds per-model **reasoning-effort** control to [SONGOAO25/dsh-chatgpt-sub](https://github.com/SONGOAO25/dsh-chatgpt-sub). The npm package `dsh-chatgpt-sub` is the upstream project and does **not** include these changes — install this repository, not the package name. What changed and why: [docs/FORK.md](docs/FORK.md). MIT, original copyright retained.
 
 ## What it does
 
@@ -22,27 +20,34 @@ Models come from the signed-in account's own catalog, so the picker reflects wha
 
 The companion [Bottom Info Bar](https://github.com/songoao25/dsh-bottom-info-bar) reads this plugin's account registration and, when a Codex login file exists on the machine, queries the Codex usage endpoint for 5-hour / weekly / monthly windows. If no Codex login exists, it shows the connected account, plan and expiry and links to ChatGPT's usage page. Per-app weekly limits are managed by the user in ChatGPT settings, not by this plugin.
 
+## Reasoning effort
+
+OpenAI's Responses API takes a top-level `reasoning.effort` — `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`. Which levels a model accepts is model-dependent, and an unsupported level is rejected by the API rather than clamped, so the plugin declares the levels per model from the official model pages.
+
+DSH's model picker then offers exactly those levels and sends the chosen one as `reasoning.effort` on every request. Set it in two places:
+
+- **Per chat** — open the model picker in a conversation and choose a level next to the model name.
+- **Default for new chats** — **Plugins → ChatGPT Subscription → Reasoning effort**.
+
+A level you set by hand under **Settings → Models** is kept: the plugin's periodic sync fills in only the models that have no levels yet, and never overwrites an edited one. The default-effort control offers only levels that **every** model in the current catalog accepts, because that setting is one shared route default; a level that is not applicable is reported instead of being written.
+
 ## Install
 
-**Recommended: install from npm through DSH.** Open **Plugins → Add plugin** in DSH and enter the package name:
+Open **Plugins → Add plugin** in DSH and enter this repository's address:
 
 ```
-dsh-chatgpt-sub
+https://github.com/kappyra/dsh-chatgpt-sub
 ```
 
-DSH looks the name up on npm and installs it with pnpm — no repository checkout, no build step. The package has been public on npm since 2026-10-13.
+`lib/` is committed, so installing from the repository needs no checkout and no build step.
 
 For a CLI web profile:
 
 ```bash
-dsh plugin --profile web add dsh-chatgpt-sub
+dsh plugin --profile web add https://github.com/kappyra/dsh-chatgpt-sub
 ```
 
-If npm cannot be reached, use the repository address instead — `lib/` is committed, so that path needs no build either:
-
-```
-https://github.com/SONGOAO25/dsh-chatgpt-sub
-```
+Install this repository rather than the package name `dsh-chatgpt-sub`: that name resolves to the upstream npm package, which has no reasoning-effort support.
 
 Then **restart DSH**. Refreshing the page is not enough. In the desktop app, use **Plugins → Add plugin**; its profile is managed by the app and cannot be installed into through the CLI.
 
@@ -64,7 +69,7 @@ Authorization and model requests communicate with official OpenAI endpoints. Tok
 
 One caveat about those numeric windows: they are read through an internal usage endpoint used by OpenAI's own Codex client. That endpoint is not publicly documented, and OpenAI may change or close it at any time. If you would rather not rely on it, do not sign in to Codex CLI (or delete `~/.codex/auth.json`) — the info bar will then show plan and expiry only. The plugin refreshes the Codex login conservatively, only when the file has been untouched for a while, and you can turn that keep-alive off entirely with `DSH_CHATGPT_CODEX_QUOTA_KEEP=off`.
 
-Unbinding and uninstalling revoke and remove the plugin's route and managed credentials; the local account registration (issued client id and host id) is kept for a faster next sign-in. The plugin refreshes the sign-in automatically. Under **Version and updates**, automatic updates (default) check npm when DSH starts, verify and replace the plugin files, then take effect after a restart. Manual mode checks without installing; installation asks for confirmation. Failed updates restore the previous files, and settings offer rollback when needed. Local checkout and linked installs require a code update and rebuild; see [docs/INSTALL.md](docs/INSTALL.md).
+Unbinding and uninstalling revoke and remove the plugin's route and managed credentials; the local account registration (issued client id and host id) is kept for a faster next sign-in. The plugin refreshes the sign-in automatically. Under **Version and updates**, this fork build keeps automatic updates **off**: the upstream package name is the same, so an upstream npm release would otherwise replace the fork's files and drop the effort support. Update it by reinstalling from this repository, or set `DSH_CHATGPT_SELF_UPDATE=on` if you really want the npm check. Manual mode checks without installing; installation asks for confirmation. Failed updates restore the previous files, and settings offer rollback when needed. Local checkout and linked installs require a code update and rebuild; see [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Uninstall and roll back
 
