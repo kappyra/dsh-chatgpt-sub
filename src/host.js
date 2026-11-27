@@ -13,7 +13,7 @@ import {
   API_ORIGIN, APP_NAME_HINT, CALLBACK_PATH, DYNAMIC_CLIENT_ID,
   accountFromIdToken, buildAuthorizeUrl, createPkcePair, exchangeAuthorizationCode,
   hasPlanUsage, maskEmail, newState, parseCallbackParams, parseModelList,
-  refreshTokens, revokeRefreshToken, verifyIdToken,
+  refreshTokens, revokeRefreshToken, scopesFromAccessToken, verifyIdToken,
 } from './siwc.js'
 import { classifyHttpFailure, classifyNetworkError } from './network.js'
 import { readRequestBody } from './http-body.js'
@@ -249,6 +249,9 @@ function parseSession(record) {
   if (!payload || typeof payload !== 'object' || payload.version !== 1) return null
   if (typeof payload.clientId !== 'string' || typeof payload.accessToken !== 'string') return null
   if (typeof payload.expiresAt !== 'number' || !isFinite(payload.expiresAt)) return null
+  const storedScopes = Array.isArray(payload.scopes)
+    ? payload.scopes.filter(function (s) { return typeof s === 'string' })
+    : []
   return {
     version: 1,
     clientId: payload.clientId,
@@ -262,7 +265,10 @@ function parseSession(record) {
     expiresAt: payload.expiresAt,
     planExpiresAt: typeof payload.planExpiresAt === 'number' ? payload.planExpiresAt : null,
     earliestRefreshAt: typeof payload.earliestRefreshAt === 'number' ? payload.earliestRefreshAt : null,
-    scopes: Array.isArray(payload.scopes) ? payload.scopes.filter(function (s) { return typeof s === 'string' }) : [],
+    // 旧记录可能没存 scopes（空数组）。把它当成「没有套餐权限」会让同步从此
+    // 在 hasPlanUsage 处提前返回，再也不写路由：账号显示已连接，请求却全部失败。
+    // 令牌自己的 scope 声明才是当前事实，存下来的为空时用它补齐。
+    scopes: storedScopes.length > 0 ? storedScopes : scopesFromAccessToken(payload.accessToken),
     savedAt: typeof payload.savedAt === 'string' ? payload.savedAt : null,
   }
 }
@@ -574,10 +580,30 @@ export default {
       deleteSessionFile()
     }
 
+    // 路由里已经写着的端口。重启后沿用它，DSH 不必等一次设置写入就能连上；
+    // 这也是「代理换了随机端口、路由还指着上一个进程的端口、请求全部 ECONNREFUSED」
+    // 这个故障的直接对策。
+    function preferredProxyPort() {
+      try {
+        const service = settings()
+        if (!settingsServiceReady(service)) return 0
+        const current = readSettingsSection(service, 'llm-pi-ai')
+        const route = current && current.providers ? current.providers[PROVIDER_ID] : undefined
+        if (!route || route.apiKeyEnv !== TOKEN_REF || typeof route.baseURL !== 'string') return 0
+        const port = Number(new URL(route.baseURL).port)
+        return Number.isInteger(port) && port > 0 && port < 65536 ? port : 0
+      } catch (err) {
+        return 0
+      }
+    }
+
     function ensureProxy() {
       if (proxy) return Promise.resolve(proxy)
       if (proxyStarting) return proxyStarting
       proxyStarting = startResponsesProxy({
+        port: preferredProxyPort(),
+        // 服务器被关掉（插件重载）时清掉句柄，下一轮 ensureProxy/同步会重建。
+        onClose: function (port) { if (proxy && proxy.port === port) proxy = null },
         // 刷新瞬间旧令牌的在途请求仍然放行：只给 2 分钟宽限，之后必须用新令牌。
         getAccessToken: function () {
           const accepted = tokenRef.value ? [tokenRef.value] : []
@@ -623,7 +649,14 @@ export default {
             : kept !== null
               ? kept
               : derived === null ? false : derived
-          return { id: model.id, name: model.name, reasoningEfforts: efforts }
+          // 同一处道理也适用输入模态：用户在设置页给模型开过图片输入，路由重写时
+          // 不能把 input 丢掉（丢一次就只剩文本，之后每次同步都还是文本）。
+          const entry = { id: model.id, name: model.name, reasoningEfforts: efforts }
+          if (previous && Array.isArray(previous.input)) entry.input = previous.input
+          if (previous && previous.reasoningEffortsAutofilled !== undefined) {
+            entry.reasoningEffortsAutofilled = previous.reasoningEffortsAutofilled
+          }
+          return entry
         }),
         defaultContextWindow: DEFAULT_CONTEXT_WINDOW,
         defaultMaxTokens: DEFAULT_MAX_TOKENS,
@@ -653,7 +686,8 @@ export default {
         }
         return { ok: true, owned: true }
       } catch (err) {
-        return { ok: false, owned: false, code: 'route.create-failed', message: 'ChatGPT 通道没建起来，稍后会自动再试一次' }
+        // 带上真实原因：只报「没建起来」时，宿主日志里也看不出是校验失败还是文件写不了。
+        return { ok: false, owned: false, code: 'route.create-failed', message: 'ChatGPT 通道没建起来，稍后会自动再试一次', detail: String((err && err.message) || err) }
       }
     }
 
@@ -936,7 +970,7 @@ export default {
         state.lastSyncAt = now
         state.expiresAt = active.planExpiresAt
         state.routeConfigured = false
-        state.error = { kind: 'route', code: route.code || 'route.unknown', message: route.message }
+        state.error = { kind: 'route', code: route.code || 'route.unknown', message: route.message, ...(route.detail ? { detail: route.detail } : {}) }
         return
       }
 
@@ -1464,7 +1498,9 @@ export default {
 
     migrateLegacy()
     ensureProxy().then(function () { return sync() })
-    ctx.interval(sync, SYNC_INTERVAL_MS)
+    // 每轮同步前确保代理还活着：本地通道被关掉时在这里重建，而不是让路由一直
+    // 指着一个没人监听的端口。
+    ctx.interval(function () { return ensureProxy().then(sync) }, SYNC_INTERVAL_MS)
   },
 }
 

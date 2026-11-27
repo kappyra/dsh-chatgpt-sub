@@ -64,13 +64,24 @@ function pickResponseHeaders(headers) {
 }
 
 /**
- * @param {{ getAccessToken: () => string | null, upstreamOrigin?: string, log?: (msg: string) => void }} options
+ * Start the local Responses normalising proxy.
+ *
+ * `port` asks for a stable port — the host passes the port already written into
+ * the `chatgpt-siwc` route so a restart reuses it instead of stranding the route
+ * on the previous run's port. A busy port falls back to a free one.
+ *
+ * @param {{ getAccessToken: () => string | null, upstreamOrigin?: string, port?: number, onClose?: (port: number) => void, log?: (msg: string) => void }} options
  * @returns {Promise<{ port: number, baseUrl: string, close: () => void }>}
  */
 export function startResponsesProxy(options) {
   const getAccessToken = options.getAccessToken
   const upstreamOrigin = options.upstreamOrigin || 'https://api.openai.com'
   const log = typeof options.log === 'function' ? options.log : function () {}
+  // 端口可以指定：优先复用路由里已经写着的端口（见 host.js 的 preferredProxyPort）。
+  const requestedPort = Number(options.port)
+  const preferredPort = Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort < 65536 ? requestedPort : 0
+  // 服务器关闭（插件被卸载/重载）后通知调用方清掉句柄，下一轮 ensureProxy 才能重建。
+  const onClose = typeof options.onClose === 'function' ? options.onClose : function () {}
 
   return new Promise(function (resolve, reject) {
     const server = createServer(async function (req, res) {
@@ -166,10 +177,18 @@ export function startResponsesProxy(options) {
       }
     })
 
-    server.on('error', reject)
-    server.listen(0, '127.0.0.1', function () {
+    // 首选端口：路由里已经写着的那个端口。端口固定下来，DSH 重启后不必等一次
+    // 设置写入就还能连上；写入失败时也不会留下一台指向死端口的路由。
+    // 真被别的程序占了就退回随机端口，交给 ensureRoute 把新端口写回去。
+    let listened = false
+    const ready = function () {
+      listened = true
+      server.removeListener('error', onListenError)
+      // 常驻代理：读连接噪声之外的错误只记录，不让一个坏连接拖垮宿主进程。
+      server.on('error', function (err) { log('proxy server error: ' + (err && err.message ? err.message : 'unknown')) })
       const address = server.address()
       const port = address && typeof address === 'object' ? address.port : 0
+      server.on('close', function () { try { onClose(port) } catch (err) {} })
       resolve({
         port: port,
         baseUrl: 'http://127.0.0.1:' + port + '/v1',
@@ -178,6 +197,16 @@ export function startResponsesProxy(options) {
           try { server.closeAllConnections && server.closeAllConnections() } catch (err) {}
         },
       })
-    })
+    }
+    const onListenError = function (err) {
+      if (!listened && preferredPort !== 0 && err && err.code === 'EADDRINUSE') {
+        log('proxy port ' + preferredPort + ' is busy, falling back to a free port')
+        server.listen(0, '127.0.0.1', ready)
+        return
+      }
+      reject(err)
+    }
+    server.on('error', onListenError)
+    server.listen(preferredPort, '127.0.0.1', ready)
   })
 }

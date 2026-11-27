@@ -308,6 +308,15 @@ export function hasPlanUsage(scopes) {
   return Array.isArray(scopes) && scopes.includes(PLAN_USAGE_SCOPE)
 }
 
+// Access token 自己声明的 scope。旧版本/旧记录可能没把 scopes 存下来（空数组），
+// 那不是「这次登录没有套餐权限」，只是本机不知道而已；令牌里的 scope 才是当前事实。
+// 读它补齐，避免同步把一份好登录判成不可用、从此再不写路由。
+export function scopesFromAccessToken(accessToken) {
+  if (!isNonEmptyString(accessToken)) return []
+  const claims = decodeJwtPayload(accessToken)
+  return claims && isNonEmptyString(claims.scope) ? claims.scope.split(/\s+/).filter(Boolean) : []
+}
+
 // ---------- 模型目录 ----------
 
 // /v1/models 的形状：{ models: [{ slug, display_name, visibility }] }，与 API key 的 data/id 不同。
