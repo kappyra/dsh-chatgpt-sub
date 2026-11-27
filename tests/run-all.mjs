@@ -26,6 +26,7 @@ const files = [
   'test-network-diagnostics.mjs',
   'test-connection-compat.mjs',
   'test-proxy-classification.mjs',
+  'test-route-port-stability.mjs',
   'test-failure-paths.mjs',
 ]
 
