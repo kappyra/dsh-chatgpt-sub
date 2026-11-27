@@ -85,3 +85,17 @@ node scripts/build.mjs && node tests/run-all.mjs
 ```
 
 `src/locales.js` is rewritten wholesale by the build's locale step, so a merge conflict there is safest resolved by taking either side and re-applying the effort strings with the script that generated them.
+
+## Fix: "account connected, every request fails" (2026-11-27)
+
+Two independent defects made the route point at a dead port while the account card still said *connected*.
+
+1. **Sync bailed out on an empty `scopes` list.** Older bind records store `scopes: []` (and `plan: null`). `syncOnce` runs `hasPlanUsage(active.scopes)`, which then returns `false`, so it reported "this sign-in does not allow plan usage" and **returned before `ensureRoute`** — the route was never written again. The sign-in itself was fine: the access token's own `scope` claim still contains `chatgpt.tokens.use.direct`.
+   Fix: `parseSession` falls back to the access-token claim (`scopesFromAccessToken` in `lib/siwc.js`) when the stored array is empty. Stored scopes still win when present.
+
+2. **The proxy bound a fresh random port on every start and the route kept the previous run's port.** When the settings write was skipped or failed, `chatgpt-siwc.baseURL` kept pointing at the last successful run's port, so every request died with `ECONNREFUSED` while the proxy was actually listening on another port.
+   Fix: the proxy prefers the port already named by the route (`preferredProxyPort`), falling back to a free port only when that one is taken; the handle is dropped when the server closes, and the 10-minute sync now calls `ensureProxy()` first so a dead channel is recreated instead of being reported forever.
+
+Also in the same pass: `routeValue` now keeps per-model `input` and `reasoningEffortsAutofilled` from the existing route, so the first successful write after this fix no longer drops image input that was enabled in **Settings → Models**; `route.create-failed` carries the underlying error in `detail` instead of a bare "did not start".
+
+Symptom to recognise if it ever returns: the account card says connected, `lsof -nP -iTCP -sTCP:LISTEN` shows a `127.0.0.1:<port>` listener belonging to DSH that is **not** the port in `chatgpt-siwc.baseURL`, and `curl` on that port answers `401 ChatGPT credential is missing or stale`.
